@@ -83,6 +83,7 @@ class Window(QMainWindow):
         self.template_drop.files.connect(self.route_files);self.data_drop.files.connect(self.route_files)
         drops.addWidget(self.template_drop);drops.addWidget(self.data_drop);box.addLayout(drops)
         row=QHBoxLayout();row.addWidget(button("生成并载入示例",self.demo));row.addWidget(button("读取 PS 当前文档副本",self.current_ps))
+        row.addWidget(button('导入模板素材包',self.import_template_bundle));row.addWidget(button('导出模板素材包',self.export_template_bundle))
         self.encoding=QComboBox();self.encoding.addItems(["utf-8-sig","gb18030"]);row.addWidget(QLabel("名单编码"));row.addWidget(self.encoding)
         self.format=QComboBox();self.format.addItems(["png","jpg"]);row.addWidget(QLabel("格式"));row.addWidget(self.format)
         row.addStretch();box.addLayout(row)
@@ -164,7 +165,7 @@ class Window(QMainWindow):
     def build_status(self):
         tab=QWidget();v=QVBoxLayout(tab);v.addWidget(QLabel("引擎状态与实现范围"));self.ps_status=QLabel("Photoshop：尚未连接")
         v.addWidget(self.ps_status);v.addWidget(button("检测 Photoshop",self.probe_ps))
-        t=QTextEdit();t.setReadOnly(True);t.setPlainText("当前版本 0.4.0\n\n已实现：多模板批次、拖拽名单、字段记忆、自定义命名、客户/模板分类目录、JSON 实图渲染、PSD 桥接、静态/GIF 贴膜、图片工具、宫格、二维码、本地图库、任务恢复及 ZIP。\n\nPhotoshop 桥接需要 Windows 桌面 Photoshop。普通文字层已编写适配，复杂 PSD、字体和未保存文档保护需要目标版本实测。\n\n已新增：拖动水印、等比缩放、JSON 文字和图片区域布局编辑。\n\n后续阶段：视频、人脸蒙版、智能对象深层修改、字体联网补齐、隐形标与邮件/网盘。\n\nQQ 指令、闪传及群管理需要逐项验证官方接口。本版本不模拟发送成功、不收集外部账号密码。")
+        t=QTextEdit();t.setReadOnly(True);t.setPlainText("当前版本 0.5.0\n\n已实现：多模板批次、拖拽名单、字段记忆、自定义命名、客户/模板分类目录、JSON 实图渲染、PSD 桥接、静态/GIF 贴膜、图片工具、宫格、二维码、本地图库、任务恢复及 ZIP。\n\nPhotoshop 桥接需要 Windows 桌面 Photoshop。普通文字层已编写适配，复杂 PSD、字体和未保存文档保护需要目标版本实测。\n\n已新增：拖动水印、等比缩放、JSON 文字和图片区域布局编辑。\n\n后续阶段：视频、人脸蒙版、智能对象深层修改、字体联网补齐、隐形标与邮件/网盘。\n\nQQ 指令、闪传及群管理需要逐项验证官方接口。本版本不模拟发送成功、不收集外部账号密码。")
         v.addWidget(t);self.tabs.addTab(tab,"连接与范围")
 
     def build_animation(self):
@@ -424,6 +425,23 @@ class Window(QMainWindow):
 
     def create_template(self):
         self.open_designer(None)
+
+    def export_template_bundle(self):
+        if not self.template or Path(self.template).suffix.lower()!='.json':self.fail('请先保存并载入 JSON 模板');return
+        path,_=QFileDialog.getSaveFileName(self,'导出模板和背景、预览框、字体素材','template-bundle.zip','ZIP (*.zip)')
+        if not path:return
+        try:
+            from .bundles import export_bundle
+            result=export_bundle(self.template,path);self.log.append('模板素材包已导出：'+str(result)+'；不包含客户名单和客户头像。')
+        except Exception as e:self.fail(str(e))
+
+    def import_template_bundle(self):
+        path,_=QFileDialog.getOpenFileName(self,'导入模板素材包','','ZIP (*.zip)')
+        if not path:return
+        try:
+            from .bundles import import_bundle
+            template=import_bundle(path,self.store/'templates');self.load_template(str(template));self.log.append('素材包已校验并载入，客户名单请另行导入。')
+        except Exception as e:self.fail(str(e))
 
     def edit_template_layout(self):
         if not self.template or Path(self.template).suffix.lower()!='.json':self.fail('请载入 JSON 模板，或点击新建模板');return

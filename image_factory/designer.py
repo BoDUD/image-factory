@@ -40,6 +40,10 @@ class TemplateDesigner(TemplateLayoutEditor):
         for title,action in [('添加文字',lambda:self.add_region('text')),('添加头像',lambda:self.add_region('slots')),('添加自动编号',lambda:self.add_region('number')),('区域属性',self.edit_properties),('删除区域',self.remove_region),('画布尺寸',self.canvas_size),('背景颜色',self.background_color),('背景图片',self.background_image)]:
             button=QPushButton(title);button.clicked.connect(action);row.addWidget(button)
         self.layout().insertLayout(1,row)
+        frames=QHBoxLayout()
+        for title,action in [('单头像框',lambda:self.preset_frame(1)),('双头像框',lambda:self.preset_frame(2)),('四宫格框',lambda:self.preset_frame(4)),('导入透明预览框',self.import_frame),('移除预览框',self.remove_frame),('试用头像图片',self.preview_avatar)]:
+            button=QPushButton(title);button.clicked.connect(action);frames.addWidget(button)
+        self.layout().insertLayout(2,frames)
         self.label.setText('示例头像和文字仅供预览；保存后绑定客户名单中的文字列和头像路径列。')
 
     def rebuild(self,selected=0):
@@ -97,3 +101,47 @@ class TemplateDesigner(TemplateLayoutEditor):
     def background_image(self):
         path,_=QFileDialog.getOpenFileName(self,'背景图片','','图片 (*.png *.jpg *.webp *.bmp)')
         if path:self.spec['background_image']=str(Path(path).resolve());self.refresh()
+
+    def preset_frame(self,count):
+        from .frames import create_frame
+        path=Path(self.temp.name)/'preview-frame.png'
+        boxes=create_frame(tuple(self.spec['size']),count,path)
+        # Preserve old fields; explicitly replace the avatar layout with the selected preset.
+        used={item['field'] for item in self.spec.get('text',[])};slots=[]
+        for i,box in enumerate(boxes):
+            name='avatar' if i==0 else 'avatar'+str(i+1)
+            while name in used:name+='_'
+            used.add(name);slots.append({'field':name,'box':box});self.values[name]=str(self.avatar)
+        self.spec['slots']=slots;self.spec['frame']=str(path);self.spec['frame_above_text']=False
+        self.rebuild();self.label.setText('已替换头像区域布局；文字区域保持原位置，可拖动到框外。')
+
+    def import_frame(self):
+        from . import imaging
+        path,_=QFileDialog.getOpenFileName(self,'透明预览框（按画布尺寸缩放）','','图片 (*.png *.webp)')
+        if not path:return
+        try:
+            frame=imaging.load_image(path)
+            if frame.getchannel('A').getextrema()[0]==255:raise ValueError('预览框没有透明区域，会遮住头像；请选择透明 PNG/WebP')
+            self.spec['frame']=str(Path(path).resolve());self.spec['frame_above_text']=False;self.refresh()
+            self.label.setText('预览框覆盖头像、位于文字下方。添加或拖动头像区域对准透明窗口；本版不自动识别孔洞。')
+        except Exception as e:self.label.setText(str(e))
+
+    def remove_frame(self):
+        self.spec.pop('frame',None);self.refresh()
+
+    def preview_avatar(self):
+        kind,i=self.items[self.selector.currentIndex()]
+        if kind!='slots':self.label.setText('请先选择头像区域');return
+        path,_=QFileDialog.getOpenFileName(self,'试用头像（仅用于预览）','','图片 (*.png *.jpg *.webp *.bmp)')
+        if path:self.values[self.spec[kind][i]['field']]=path;self.refresh()
+
+    def save_to(self,destination):
+        # Generated frames must outlive this dialog's temporary preview directory.
+        import shutil,uuid
+        destination=Path(destination)
+        if self.spec.get('frame') and Path(self.spec['frame']).parent==Path(self.temp.name):
+            if not self.refresh():raise ValueError('模板排版无效')
+            assets=destination.parent/(destination.stem+'-assets');assets.mkdir(parents=True,exist_ok=True)
+            target=assets/('frame-'+uuid.uuid4().hex+'.png');shutil.copy2(self.spec['frame'],target)
+            self.spec['frame']=str(target.resolve())
+        super().save_to(destination)

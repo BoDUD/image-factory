@@ -18,9 +18,16 @@ def run(root,template):
     layout.grab().save(str(root/'template-editor.png'));layout.save_to(root/'edited-template.json');layout.close()
     assert imaging.render_template(root/'edited-template.json',values).size==base.size
     from .designer import TemplateDesigner
-    designer=TemplateDesigner();designer.add_region('slots');designer.add_region('number')
+    designer=TemplateDesigner();designer.preset_frame(2);designer.add_region('number')
+    designer.spec['text'][0]['box']=[80,560,740,100]
     designer.spec['text'][-1]['box']=[80,700,500,100]
     designer.spec['text'][-1]['number']['prefix']='VIP-'
     designer.refresh();designer.show();QApplication.processEvents()
-    designer.grab().save(str(root/'template-designer.png'));designer.save_to(root/'new-template.json');designer.close()
-    return {'watermark_editor':True,'template_editor':True,'template_designer':True,'photoshop_render_verified':False}
+    designer.grab().save(str(root/'template-designer.png'));designer.save_to(root/'new-template.json')
+    from .bundles import export_bundle,import_bundle
+    archive=export_bundle(root/'new-template.json',root/'template-bundle.zip')
+    imported=import_bundle(archive,root/'imported')
+    expected=imaging.render_template(root/'new-template.json',designer.values)
+    actual=imaging.render_template(imported,designer.values)
+    assert actual.tobytes()==expected.tobytes();actual.save(root/'frame-result.png');designer.close()
+    return {'watermark_editor':True,'template_editor':True,'template_designer':True,'frame_bundle_roundtrip':True,'photoshop_render_verified':False}

@@ -81,6 +81,8 @@ def render_spec(spec,values,template):
         size_ok(w, h)
         im = ImageOps.fit(load_image(values[slot["field"]]), (w, h), centering=tuple(slot.get("centering", [.5, .5])))
         canvas.alpha_composite(im, (x, y))
+    if spec.get('frame') and not spec.get('frame_above_text',True):
+        canvas.alpha_composite(load_image(asset(template,spec['frame'])).resize(canvas.size))
     for item in spec.get("text", []):
         text = number_text(item['number'],values.get('__index',1)) if 'number' in item else str(values[item['field']])
         x, y, w, h = map(int, item["box"])
@@ -98,7 +100,7 @@ def render_spec(spec,values,template):
             raise ValueError(f"字段 {item['field']} 的文字超出模板范围")
         left = x + ((w - (box[2] - box[0])) / 2 if item.get("align") == "center" else 0)
         draw.multiline_text((left - box[0], y - box[1]), text, font=font, fill=item.get("color", "black"), stroke_width=stroke, stroke_fill=item.get("stroke_color", "white"))
-    if spec.get("frame"):
+    if spec.get("frame") and spec.get('frame_above_text',True):
         canvas.alpha_composite(load_image(asset(template, spec["frame"])).resize(canvas.size))
     return canvas
 
