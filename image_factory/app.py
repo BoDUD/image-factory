@@ -61,7 +61,7 @@ class Window(QMainWindow):
         self.store=Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation))
         self.store.mkdir(parents=True,exist_ok=True)
         self.worker=None;self.template=None;self.layers=[];self.fields=[];self.headers=[];self.rows=[];self.images=[]
-        self.last_batch=None;self.customer_path=None
+        self.last_batch=None;self.customer_path=None;self.collection=[]
         central=QWidget();self.setCentralWidget(central);layout=QVBoxLayout(central)
         title=QLabel("IMAGE FACTORY   /   本地出图工坊");title.setObjectName("title");layout.addWidget(title)
         self.hint=QLabel("拖入模板与客户信息，配置一次，批量交付。素材默认保存在本地。");layout.addWidget(self.hint)
@@ -86,6 +86,10 @@ class Window(QMainWindow):
         self.encoding=QComboBox();self.encoding.addItems(["utf-8-sig","gb18030"]);row.addWidget(QLabel("名单编码"));row.addWidget(self.encoding)
         self.format=QComboBox();self.format.addItems(["png","jpg"]);row.addWidget(QLabel("格式"));row.addWidget(self.format)
         row.addStretch();box.addLayout(row)
+        options=QHBoxLayout();self.naming=QLineEdit('{customer}_{template}_{row_id}');self.naming.setToolTip('支持 {customer} {template} {row_id} {date} {index}')
+        options.addWidget(QLabel('命名'));options.addWidget(self.naming,1);self.group=QComboBox()
+        for label,key in [('不分类','none'),('按客户','customer'),('按模板','template')]:self.group.addItem(label,key)
+        options.addWidget(self.group);box.addLayout(options)
         split=QSplitter();left=QWidget();v=QVBoxLayout(left)
         v.addWidget(QLabel("③ 字段匹配（首次设置后自动记忆）"))
         self.mapping=QTableWidget(0,3);self.mapping.setHorizontalHeaderLabels(["模板字段","客户信息列","最大宽度 px / PS"])
@@ -97,6 +101,29 @@ class Window(QMainWindow):
         row=QHBoxLayout();row.addWidget(button("保存字段配置",self.save_mapping));row.addWidget(button("试出第一张",self.preview_one))
         start=button("一键改图 →",self.start_templates);start.setObjectName("primary");row.addWidget(start)
         box.addLayout(row);self.tabs.addTab(tab,"一键改图")
+        collection=QHBoxLayout();collection.addWidget(button('加入多模板批次',self.add_collection));self.collection_label=QLabel('0 个模板 / 0 张');collection.addWidget(self.collection_label)
+        collection.addWidget(button('查看 / 移除模板',self.edit_collection));collection.addWidget(button('运行多模板批次',self.run_collection));box.addLayout(collection)
+
+    def add_collection(self):
+        try:
+            recipe,rows=self.recipe();self.save_mapping();self.collection.append((recipe,rows));self.collection_count()
+        except Exception as e:self.fail(str(e))
+
+    def collection_count(self):
+        self.collection_label.setText(f'{len(self.collection)} 个模板 / {sum(len(r) for _,r in self.collection)} 张')
+
+    def edit_collection(self):
+        if not self.collection:self.fail('批次为空');return
+        choices=[f'{i+1}. {Path(r["template"]).name} — {len(rows)} 张' for i,(r,rows) in enumerate(self.collection)]
+        choice,ok=QInputDialog.getItem(self,'移除模板','各模板保留加入时的名单与字段快照。选择要移除的项：',choices,0,False)
+        if ok:self.collection.pop(choices.index(choice));self.collection_count()
+
+    def run_collection(self):
+        try:
+            from .jobs import combine
+            recipe,rows=combine(self.collection,self.format.currentText(),self.naming.text(),self.group.currentData())
+            self.run_batch(recipe,rows)
+        except Exception as e:self.fail(str(e))
 
     def build_tools(self):
         tab=QWidget();v=QVBoxLayout(tab)
@@ -136,7 +163,7 @@ class Window(QMainWindow):
     def build_status(self):
         tab=QWidget();v=QVBoxLayout(tab);v.addWidget(QLabel("引擎状态与实现范围"));self.ps_status=QLabel("Photoshop：尚未连接")
         v.addWidget(self.ps_status);v.addWidget(button("检测 Photoshop",self.probe_ps))
-        t=QTextEdit();t.setReadOnly(True);t.setPlainText("当前版本 0.1.0\n\n已实现：拖拽名单、字段记忆、JSON 模板实图渲染、PSD 桥接、静态贴膜、图片工具、宫格、二维码、本地图库、任务恢复及 ZIP。\n\nPhotoshop 桥接需要 Windows 桌面 Photoshop。普通文字层已编写适配，复杂 PSD、字体和未保存文档保护需要目标版本实测。\n\n后续阶段：可视化槽位编辑、动态图/视频、人脸蒙版、智能对象深层修改、字体联网补齐、隐形标与邮件/网盘。\n\nQQ 指令、闪传及群管理需要逐项验证官方接口。本版本不模拟发送成功、不收集外部账号密码。")
+        t=QTextEdit();t.setReadOnly(True);t.setPlainText("当前版本 0.2.0\n\n已实现：多模板批次、拖拽名单、字段记忆、自定义命名、客户/模板分类目录、JSON 实图渲染、PSD 桥接、静态/GIF 贴膜、图片工具、宫格、二维码、本地图库、任务恢复及 ZIP。\n\nPhotoshop 桥接需要 Windows 桌面 Photoshop。普通文字层已编写适配，复杂 PSD、字体和未保存文档保护需要目标版本实测。\n\n后续阶段：可视化槽位编辑、视频、人脸蒙版、智能对象深层修改、字体联网补齐、隐形标与邮件/网盘。\n\nQQ 指令、闪传及群管理需要逐项验证官方接口。本版本不模拟发送成功、不收集外部账号密码。")
         v.addWidget(t);self.tabs.addTab(tab,"连接与范围")
 
     def build_animation(self):
@@ -187,10 +214,23 @@ class Window(QMainWindow):
     def route_files(self,paths):
         templates=[p for p in paths if Path(p).suffix.lower() in {".psd",".json"}]
         customers=[p for p in paths if Path(p).suffix.lower() in {".xlsx",".csv",".txt"}]
-        if len(templates)>1 or len(customers)>1:self.fail("本次请选择一个模板和一份名单；多模板可依次运行");return
+        if len(customers)>1:self.fail("一次请选择一份客户名单");return
         if not templates and not customers:self.fail("请拖入 PSD/JSON 模板或 XLSX/CSV/TXT 名单");return
-        if customers:self.load_customers(customers[0])
-        if templates:self.load_template(templates[0])
+        if customers and not self.load_customers(customers[0]):return
+        if len(templates)>1:self.load_many(templates)
+        elif templates:self.load_template(templates[0])
+
+    def load_many(self,paths):
+        if not self.rows:self.fail('请先导入客户名单');return
+        headers=list(self.headers);rows=[dict(row) for row in self.rows];customer_path=self.customer_path;store=self.store
+        def run(w):
+            from .templates import prepare_many
+            ps=Photoshop()
+            try:return prepare_many(paths,headers,rows,customer_path,store,lambda path:ps.call('inspect',template=path))
+            finally:ps.close()
+        def done(entries):
+            self.collection.extend(entries);self.collection_count();self.log.append(f'已加入 {len(entries)} 个模板。点击“运行多模板批次”开始。')
+        self.launch(run,done)
 
     def load_customers(self,path):
         try:
@@ -206,7 +246,8 @@ class Window(QMainWindow):
             for i,row in enumerate(self.rows[:5]):
                 for j,key in enumerate(self.headers):self.data_table.setItem(i,j,QTableWidgetItem(row[key]))
             self.refresh_mapping()
-        except Exception as e:self.fail(str(e))
+            return True
+        except Exception as e:self.fail(str(e));return False
 
     def load_template(self,path):
         path=str(Path(path).resolve())
@@ -276,7 +317,7 @@ class Window(QMainWindow):
                     source=Path(row[slot["field"]])
                     if not source.is_absolute():source=Path(self.customer_path).parent/source
                     row[slot["field"]]=str(source.resolve());files.append(source)
-        recipe={"mode":mode,"template":template,"format":self.format.currentText(),"sources":sources(files)}
+        recipe={"mode":mode,"template":template,"format":self.format.currentText(),"sources":sources(files),'naming':self.naming.text(),'group':self.group.currentData()}
         if mode=="psd":
             widths={f:self.mapping.cellWidget(i,2).value() for i,f in enumerate(self.fields)}
             recipe["bindings"]=[dict(l,max_width=widths[l["field"]],min_size=12) for l in self.layers]
@@ -502,7 +543,10 @@ def main():
     if '--smoke-dir' in sys.argv:
         root=Path(sys.argv[sys.argv.index('--smoke-dir')+1]).resolve();root.mkdir(parents=True,exist_ok=True)
         window.store=root/'state';window.store.mkdir(exist_ok=True);window.output.setText(str(root/'output'))
-        window.demo();window.start_templates()
+        window.demo();window.add_collection()
+        second=window.store/'example/second.json'
+        spec=json.loads(Path(window.template).read_text(encoding='utf-8'));spec['background']='#ffeedd';write_json(second,spec)
+        window.load_template(str(second));window.add_collection();window.group.setCurrentIndex(window.group.findData('customer'));window.run_collection()
         def finish_smoke():
             if window.worker and window.worker.isRunning():return
             ok=bool(window.last_batch and all(x[3]=='succeeded' for x in window.last_batch['items']))

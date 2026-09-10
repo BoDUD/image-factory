@@ -27,18 +27,26 @@ class Queue:
 
     def plan(self, recipe, rows):
         if not rows: raise ValueError("没有待处理记录")
+        if len(rows)>50000:raise ValueError('一个批次最多 50000 张')
+        if recipe.get('format','png') not in {'png','jpg'}:raise ValueError('格式必须为 png 或 jpg')
         key = stable_hash({"recipe":recipe, "rows":rows})
         if self.db.execute("SELECT 1 FROM batches WHERE id=?", (key,)).fetchone():
             return key
+        from .naming import output_name
+        date=datetime.now().strftime('%Y%m%d')
         with self.db:
             self.db.execute("INSERT INTO batches VALUES(?,?,?)", (key,json.dumps(recipe,ensure_ascii=False),datetime.now().isoformat()))
+            reserved={r[0].casefold() for r in self.db.execute('SELECT path FROM items')}
             for i,row in enumerate(rows):
-                name = safe_name(row.get("customer") or row.get("__name") or f"image_{i+1}")
-                relative = f"{name}_{i+1:04d}.{recipe.get('format','png')}"
+                child=recipe['recipes'][row['recipe_index']] if recipe['mode']=='multi' else recipe
+                values=row['values'] if recipe['mode']=='multi' else row
+                name=output_name(recipe.get('naming','{customer}_{index}'),values,Path(child.get('template','image')).stem,i+1,date,recipe.get('group','none'))
+                relative = f"{name}.{recipe.get('format','png')}"
                 counter=0
-                while (self.root/relative).exists() or self.db.execute("SELECT 1 FROM items WHERE path=?",(relative,)).fetchone():
-                    counter+=1;relative=f"{name}_{i+1:04d}_{counter}.{recipe.get('format','png')}"
+                while within(self.root,relative).exists() or relative.casefold() in reserved:
+                    counter+=1;relative=f"{name}_{counter}.{recipe.get('format','png')}"
                 self.db.execute("INSERT INTO items(id,batch,payload,path) VALUES(?,?,?,?)", (stable_hash([key,i]),key,json.dumps(row,ensure_ascii=False),relative))
+                reserved.add(relative.casefold())
         return key
 
     def batches(self):
@@ -78,11 +86,14 @@ class Queue:
                 committed_sha=None
                 try:
                     data=json.loads(payload)
-                    mode=recipe["mode"]
+                    active=recipe
+                    if recipe['mode']=='multi':
+                        active=recipe['recipes'][data['recipe_index']];data=data['values']
+                    mode=active["mode"]
                     if mode=="psd":
-                        ps.call("render",template=recipe["template"],bindings=recipe["bindings"],values=data,output=str(temp),format=recipe["format"])
+                        ps.call("render",template=active["template"],bindings=active["bindings"],values=data,output=str(temp),format=recipe["format"])
                     elif mode=="template":
-                        imaging.save_image(imaging.render_template(recipe["template"],data),temp,recipe["format"])
+                        imaging.save_image(imaging.render_template(active["template"],data),temp,recipe["format"])
                     else:
                         im=imaging.load_image(data["input"])
                         if mode=="watermark":
@@ -100,6 +111,8 @@ class Queue:
                     # Store the expected hash before committing. A crash after link can be reconciled.
                     self.update(key,"committing",sha)
                     committed_sha=sha
+                    dest.parent.mkdir(parents=True,exist_ok=True)
+                    dest=within(self.root,relative)
                     os.link(temp,dest)  # Atomic, same filesystem, never overwrites an existing destination.
                     temp.unlink()
                     self.update(key,"succeeded",sha)
@@ -115,3 +128,16 @@ class Queue:
 
 def sources(paths):
     return {str(Path(p).resolve()):digest(p) for p in paths}
+
+
+def combine(entries,format='png',naming='{customer}_{template}_{row_id}',group='customer'):
+    if not entries:raise ValueError('请先加入一个模板')
+    recipes=[];rows=[];all_sources={}
+    for index,(recipe,values) in enumerate(entries):
+        if recipe['mode'] not in {'psd','template'}:raise ValueError('组合批次只接受模板任务')
+        recipes.append(recipe)
+        for path,sha in recipe['sources'].items():
+            if path in all_sources and all_sources[path]!=sha:raise ValueError('同一素材的版本不同，请重新加入模板')
+            all_sources[path]=sha
+        rows.extend({'recipe_index':index,'values':value} for value in values)
+    return {'mode':'multi','recipes':recipes,'sources':all_sources,'format':format,'naming':naming,'group':group},rows

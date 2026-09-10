@@ -13,4 +13,6 @@ def test_demo_binding_and_recipe(tmp_path):
     assert recipe['mode']=='template' and values[0]['customer']=='今今'
     window.save_mapping()
     assert window.config_path().exists()
+    window.add_collection()
+    assert len(window.collection)==1 and len(window.collection[0][1])==3
     window.close()

@@ -23,8 +23,8 @@ def export_batch(output,batch,destination):
     temp=dest.with_name('.'+uuid.uuid4().hex+'.zip')
     try:
         with zipfile.ZipFile(temp,'w',zipfile.ZIP_DEFLATED) as z:
-            for path,sha in files:z.write(path,path.name)
-            z.writestr('manifest.json',json.dumps({'batch':batch,'files':[{'name':p.name,'sha256':sha} for p,sha in files]},ensure_ascii=False,indent=2))
+            for path,sha in files:z.write(path,path.relative_to(Path(output).resolve()).as_posix())
+            z.writestr('manifest.json',json.dumps({'batch':batch,'files':[{'name':p.relative_to(Path(output).resolve()).as_posix(),'sha256':sha} for p,sha in files]},ensure_ascii=False,indent=2))
         os.replace(temp,dest)
     finally:
         if temp.exists():temp.unlink()
