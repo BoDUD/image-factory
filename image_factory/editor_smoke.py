@@ -17,4 +17,10 @@ def run(root,template):
     layout=TemplateLayoutEditor(template,values);layout.move_box([80,230,740,150]);layout.refresh();layout.show();QApplication.processEvents()
     layout.grab().save(str(root/'template-editor.png'));layout.save_to(root/'edited-template.json');layout.close()
     assert imaging.render_template(root/'edited-template.json',values).size==base.size
-    return {'watermark_editor':True,'template_editor':True,'photoshop_render_verified':False}
+    from .designer import TemplateDesigner
+    designer=TemplateDesigner();designer.add_region('slots');designer.add_region('number')
+    designer.spec['text'][-1]['box']=[80,700,500,100]
+    designer.spec['text'][-1]['number']['prefix']='VIP-'
+    designer.refresh();designer.show();QApplication.processEvents()
+    designer.grab().save(str(root/'template-designer.png'));designer.save_to(root/'new-template.json');designer.close()
+    return {'watermark_editor':True,'template_editor':True,'template_designer':True,'photoshop_render_verified':False}

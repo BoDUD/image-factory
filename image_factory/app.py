@@ -98,7 +98,7 @@ class Window(QMainWindow):
         split.addWidget(left)
         self.preview=QLabel("试出一张，确认效果");self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter);self.preview.setMinimumWidth(340);self.preview.setObjectName("preview")
         split.addWidget(self.preview);box.addWidget(split,1)
-        row=QHBoxLayout();row.addWidget(button("保存字段配置",self.save_mapping));row.addWidget(button('拖动编辑模板布局',self.edit_template_layout));row.addWidget(button("试出第一张",self.preview_one))
+        row=QHBoxLayout();row.addWidget(button("新建模板",self.create_template));row.addWidget(button("保存字段配置",self.save_mapping));row.addWidget(button('拖动编辑模板布局',self.edit_template_layout));row.addWidget(button("试出第一张",self.preview_one))
         start=button("一键改图 →",self.start_templates);start.setObjectName("primary");row.addWidget(start)
         box.addLayout(row);self.tabs.addTab(tab,"一键改图")
         collection=QHBoxLayout();collection.addWidget(button('加入多模板批次',self.add_collection));self.collection_label=QLabel('0 个模板 / 0 张');collection.addWidget(self.collection_label)
@@ -164,7 +164,7 @@ class Window(QMainWindow):
     def build_status(self):
         tab=QWidget();v=QVBoxLayout(tab);v.addWidget(QLabel("引擎状态与实现范围"));self.ps_status=QLabel("Photoshop：尚未连接")
         v.addWidget(self.ps_status);v.addWidget(button("检测 Photoshop",self.probe_ps))
-        t=QTextEdit();t.setReadOnly(True);t.setPlainText("当前版本 0.3.0\n\n已实现：多模板批次、拖拽名单、字段记忆、自定义命名、客户/模板分类目录、JSON 实图渲染、PSD 桥接、静态/GIF 贴膜、图片工具、宫格、二维码、本地图库、任务恢复及 ZIP。\n\nPhotoshop 桥接需要 Windows 桌面 Photoshop。普通文字层已编写适配，复杂 PSD、字体和未保存文档保护需要目标版本实测。\n\n已新增：拖动水印、等比缩放、JSON 文字和图片区域布局编辑。\n\n后续阶段：视频、人脸蒙版、智能对象深层修改、字体联网补齐、隐形标与邮件/网盘。\n\nQQ 指令、闪传及群管理需要逐项验证官方接口。本版本不模拟发送成功、不收集外部账号密码。")
+        t=QTextEdit();t.setReadOnly(True);t.setPlainText("当前版本 0.4.0\n\n已实现：多模板批次、拖拽名单、字段记忆、自定义命名、客户/模板分类目录、JSON 实图渲染、PSD 桥接、静态/GIF 贴膜、图片工具、宫格、二维码、本地图库、任务恢复及 ZIP。\n\nPhotoshop 桥接需要 Windows 桌面 Photoshop。普通文字层已编写适配，复杂 PSD、字体和未保存文档保护需要目标版本实测。\n\n已新增：拖动水印、等比缩放、JSON 文字和图片区域布局编辑。\n\n后续阶段：视频、人脸蒙版、智能对象深层修改、字体联网补齐、隐形标与邮件/网盘。\n\nQQ 指令、闪传及群管理需要逐项验证官方接口。本版本不模拟发送成功、不收集外部账号密码。")
         v.addWidget(t);self.tabs.addTab(tab,"连接与范围")
 
     def build_animation(self):
@@ -289,7 +289,7 @@ class Window(QMainWindow):
             self.mapping.setCellWidget(i,2,width)
 
     def bindings(self):
-        if not self.template or not self.rows or not self.fields:raise ValueError("请先载入有效模板与客户信息")
+        if not self.template or not self.rows:raise ValueError("请先载入有效模板与客户信息")
         mapping={f:self.mapping.cellWidget(i,1).currentData() for i,f in enumerate(self.fields)}
         if any(not v for v in mapping.values()):raise ValueError("请为每个模板字段选择客户信息列")
         values=[]
@@ -422,15 +422,22 @@ class Window(QMainWindow):
                 self.log.append('编辑已应用到当前贴膜设置；点击“批量贴膜”应用整批，或保存预设。')
         except Exception as e:self.fail(str(e))
 
+    def create_template(self):
+        self.open_designer(None)
+
     def edit_template_layout(self):
-        if not self.template or Path(self.template).suffix.lower()!='.json':self.fail('可视化布局编辑使用 JSON 图片模板；PSD 布局仍需 Photoshop。可先载入内置示例。');return
+        if not self.template or Path(self.template).suffix.lower()!='.json':self.fail('请载入 JSON 模板，或点击新建模板');return
+        self.open_designer(self.template)
+
+    def open_designer(self,path):
         try:
-            from .editor import TemplateLayoutEditor
-            recipe,rows=self.recipe();editor=TemplateLayoutEditor(self.template,rows[0],self)
+            from .designer import TemplateDesigner
+            editor=TemplateDesigner(path,self)
             if not editor.exec():return
-            path,_=QFileDialog.getSaveFileName(self,'另存为新模板',str(Path(self.template).with_name(Path(self.template).stem+'_edited.json')),'JSON (*.json)')
-            if not path:return
-            editor.save_to(path);self.load_template(path);self.log.append('新模板已载入，原模板未修改；多模板批次中的旧快照不会自动替换。')
+            destination,_=QFileDialog.getSaveFileName(self,'保存新模板','my-template.json','JSON (*.json)')
+            if not destination:return
+            editor.save_to(destination);self.load_template(destination)
+            self.log.append('模板已载入；导入客户名单并绑定字段即可出图。自动编号不需要名单列。')
         except Exception as e:self.fail(str(e))
 
     def image_recipe(self,mode):

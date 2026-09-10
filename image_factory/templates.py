@@ -15,7 +15,7 @@ def prepare_many(paths,headers,rows,customer_path,store,inspect_ps):
             mode='psd';layers=inspect_ps(path)['layers'];fields=list(dict.fromkeys(l['field'] for l in layers));files=[path]
         else:
             mode='template';fields=imaging.inspect_template(path);files=imaging.dependencies(path)
-        if not fields:raise ValueError(Path(path).name+' 没有可绑定字段')
+        if not fields and mode=='psd':raise ValueError(Path(path).name+' 没有可绑定字段')
         mapping=auto_bind(fields,headers);config={}
         config_path=Path(store)/'mappings'/(stable_hash(path)+'.json')
         if config_path.exists():

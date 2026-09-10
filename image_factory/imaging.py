@@ -40,7 +40,7 @@ def inspect_template(path):
     fields = [x["field"] for x in spec.get("text", []) + spec.get("slots", [])]
     if not fields or any(not str(f).strip() for f in fields):
         raise ValueError("模板至少需要一个字段")
-    return list(dict.fromkeys(fields))
+    return list(dict.fromkeys(x['field'] for x in spec.get('text', []) + spec.get('slots', []) if 'number' not in x))
 
 
 def asset(template, name):
@@ -57,6 +57,12 @@ def dependencies(template):
     for item in spec.get("text", []):
         paths.append(asset(template, item["font"]) if item.get("font") else Path(font_path() or "missing-font"))
     return paths
+
+
+def number_text(config,index):
+    start=int(config.get('start',1));step=int(config.get('step',1));digits=int(config.get('digits',3));index=int(index)
+    if start<0 or step<1 or not 1<=digits<=12 or index<1:raise ValueError('自动编号参数无效')
+    return str(config.get('prefix',''))+str(start+(index-1)*step).zfill(digits)
 
 
 def render_template(template, values):
@@ -76,7 +82,7 @@ def render_spec(spec,values,template):
         im = ImageOps.fit(load_image(values[slot["field"]]), (w, h), centering=tuple(slot.get("centering", [.5, .5])))
         canvas.alpha_composite(im, (x, y))
     for item in spec.get("text", []):
-        text = str(values[item["field"]])
+        text = number_text(item['number'],values.get('__index',1)) if 'number' in item else str(values[item['field']])
         x, y, w, h = map(int, item["box"])
         size = int(item.get("size", 64)); minimum = int(item.get("min_size", 16))
         fpath = asset(template, item["font"]) if item.get("font") else None
