@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "image-factory"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local template driven image production workbench"
 requires-python = ">=3.11"
 dependencies = ["PySide6>=6.8,<7", "Pillow>=11,<13", "openpyxl>=3.1,<4", "qrcode>=8,<9", "pywin32>=308;sys_platform=='win32'"]

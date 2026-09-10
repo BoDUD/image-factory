@@ -42,6 +42,9 @@ class Photoshop:
     def call(self, operation, timeout=120, **data):
         if sys.platform != "win32":
             raise RuntimeError("Photoshop 桥接目前只支持 Windows")
+        from .diagnostics import photoshop_environment
+        environment=photoshop_environment()
+        if not environment['registered']:raise RuntimeError(environment['message'])
         if self.process is None:
             ctx = mp.get_context("spawn")
             self.pipe, child = ctx.Pipe()

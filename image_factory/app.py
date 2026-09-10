@@ -61,7 +61,7 @@ class Window(QMainWindow):
         self.store=Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation))
         self.store.mkdir(parents=True,exist_ok=True)
         self.worker=None;self.template=None;self.layers=[];self.fields=[];self.headers=[];self.rows=[];self.images=[]
-        self.last_batch=None;self.customer_path=None;self.collection=[]
+        self.last_batch=None;self.customer_path=None;self.collection=[];self.water_offset=None
         central=QWidget();self.setCentralWidget(central);layout=QVBoxLayout(central)
         title=QLabel("IMAGE FACTORY   /   本地出图工坊");title.setObjectName("title");layout.addWidget(title)
         self.hint=QLabel("拖入模板与客户信息，配置一次，批量交付。素材默认保存在本地。");layout.addWidget(self.hint)
@@ -98,7 +98,7 @@ class Window(QMainWindow):
         split.addWidget(left)
         self.preview=QLabel("试出一张，确认效果");self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter);self.preview.setMinimumWidth(340);self.preview.setObjectName("preview")
         split.addWidget(self.preview);box.addWidget(split,1)
-        row=QHBoxLayout();row.addWidget(button("保存字段配置",self.save_mapping));row.addWidget(button("试出第一张",self.preview_one))
+        row=QHBoxLayout();row.addWidget(button("保存字段配置",self.save_mapping));row.addWidget(button('拖动编辑模板布局',self.edit_template_layout));row.addWidget(button("试出第一张",self.preview_one))
         start=button("一键改图 →",self.start_templates);start.setObjectName("primary");row.addWidget(start)
         box.addLayout(row);self.tabs.addTab(tab,"一键改图")
         collection=QHBoxLayout();collection.addWidget(button('加入多模板批次',self.add_collection));self.collection_label=QLabel('0 个模板 / 0 张');collection.addWidget(self.collection_label)
@@ -133,12 +133,13 @@ class Window(QMainWindow):
         form=QFormLayout();self.overlay=QLineEdit();row=QHBoxLayout();row.addWidget(self.overlay);row.addWidget(button("选择水印",self.select_overlay));form.addRow("透明水印",row)
         self.scale=QDoubleSpinBox();self.scale.setRange(.01,2);self.scale.setValue(.3);self.scale.setSingleStep(.05);form.addRow("水印宽度 / 画布宽度",self.scale)
         self.opacity=QDoubleSpinBox();self.opacity.setRange(0,1);self.opacity.setSingleStep(.1);self.opacity.setValue(.65);form.addRow("透明度",self.opacity)
-        self.position=QComboBox();self.position.addItems(["bottom-right","center","top-left"]);form.addRow("锚点",self.position)
+        self.position=QComboBox();self.position.addItems(["bottom-right","center","top-left","custom"]);form.addRow("锚点（custom 为拖动位置）",self.position)
         self.blend=QComboBox();self.blend.addItems(["normal","multiply","screen","overlay"]);form.addRow("混合模式",self.blend)
         self.tile=QCheckBox("覆盖画布平铺");form.addRow(self.tile)
         self.gap=QSpinBox();self.gap.setRange(0,500);self.gap.setValue(30);form.addRow("边距 / 平铺间距",self.gap)
         v.addLayout(form)
         row=QHBoxLayout();row.addWidget(button("贴膜预览",self.preview_watermark));row.addWidget(button("批量贴膜",self.start_watermark));row.addWidget(button("保存贴膜预设",self.save_preset));row.addWidget(button("载入预设",self.load_preset));v.addLayout(row)
+        v.addWidget(button('打开可视化编辑 · 拖动水印与缩放',self.edit_watermark))
         row=QHBoxLayout();self.operation=QComboBox()
         for label,key in [("等比调整宽度","resize"),("水平镜像","mirror"),("上下镜像","flip"),("中心方形裁切","square"),("高斯模糊","blur"),("马赛克","mosaic")]:self.operation.addItem(label,key)
         row.addWidget(self.operation);self.amount=QSpinBox();self.amount.setRange(1,10000);self.amount.setValue(512);row.addWidget(self.amount)
@@ -163,7 +164,7 @@ class Window(QMainWindow):
     def build_status(self):
         tab=QWidget();v=QVBoxLayout(tab);v.addWidget(QLabel("引擎状态与实现范围"));self.ps_status=QLabel("Photoshop：尚未连接")
         v.addWidget(self.ps_status);v.addWidget(button("检测 Photoshop",self.probe_ps))
-        t=QTextEdit();t.setReadOnly(True);t.setPlainText("当前版本 0.2.0\n\n已实现：多模板批次、拖拽名单、字段记忆、自定义命名、客户/模板分类目录、JSON 实图渲染、PSD 桥接、静态/GIF 贴膜、图片工具、宫格、二维码、本地图库、任务恢复及 ZIP。\n\nPhotoshop 桥接需要 Windows 桌面 Photoshop。普通文字层已编写适配，复杂 PSD、字体和未保存文档保护需要目标版本实测。\n\n后续阶段：可视化槽位编辑、视频、人脸蒙版、智能对象深层修改、字体联网补齐、隐形标与邮件/网盘。\n\nQQ 指令、闪传及群管理需要逐项验证官方接口。本版本不模拟发送成功、不收集外部账号密码。")
+        t=QTextEdit();t.setReadOnly(True);t.setPlainText("当前版本 0.3.0\n\n已实现：多模板批次、拖拽名单、字段记忆、自定义命名、客户/模板分类目录、JSON 实图渲染、PSD 桥接、静态/GIF 贴膜、图片工具、宫格、二维码、本地图库、任务恢复及 ZIP。\n\nPhotoshop 桥接需要 Windows 桌面 Photoshop。普通文字层已编写适配，复杂 PSD、字体和未保存文档保护需要目标版本实测。\n\n已新增：拖动水印、等比缩放、JSON 文字和图片区域布局编辑。\n\n后续阶段：视频、人脸蒙版、智能对象深层修改、字体联网补齐、隐形标与邮件/网盘。\n\nQQ 指令、闪传及群管理需要逐项验证官方接口。本版本不模拟发送成功、不收集外部账号密码。")
         v.addWidget(t);self.tabs.addTab(tab,"连接与范围")
 
     def build_animation(self):
@@ -380,6 +381,10 @@ class Window(QMainWindow):
         self.launch(run,done)
 
     def probe_ps(self):
+        from .diagnostics import photoshop_environment
+        environment=photoshop_environment()
+        if not environment['registered']:
+            self.ps_status.setText(environment['message']);self.log.append('环境检查：'+environment['message']);return
         def run(w):
             ps=Photoshop()
             try:return ps.call("probe",timeout=30)
@@ -401,7 +406,32 @@ class Window(QMainWindow):
         if path:self.overlay.setText(path)
 
     def water_options(self):
-        return dict(scale=self.scale.value(),opacity=self.opacity.value(),position=self.position.currentText(),tile=self.tile.isChecked(),gap=self.gap.value(),blend=self.blend.currentText())
+        if self.position.currentText()=='custom' and self.water_offset is None:raise ValueError('请先用可视化编辑设置自由位置')
+        return dict(scale=self.scale.value(),opacity=self.opacity.value(),position=self.position.currentText(),tile=self.tile.isChecked(),gap=self.gap.value(),blend=self.blend.currentText(),offset=self.water_offset if self.position.currentText()=='custom' else None)
+
+    def edit_watermark(self):
+        if not self.images:self.fail('请先在贴膜页选择底图和水印');return
+        try:
+            from .editor import WatermarkEditor
+            editor=WatermarkEditor(imaging.load_image(self.images[0]),imaging.load_image(self.overlay.text()),self.water_options(),self)
+            if editor.exec():
+                options=editor.options
+                self.scale.setDecimals(6);self.scale.setValue(options['scale']);self.opacity.setValue(options['opacity']);self.tile.setChecked(False)
+                self.water_offset=options.get('offset')
+                if self.water_offset is not None:self.position.setCurrentText('custom')
+                self.log.append('编辑已应用到当前贴膜设置；点击“批量贴膜”应用整批，或保存预设。')
+        except Exception as e:self.fail(str(e))
+
+    def edit_template_layout(self):
+        if not self.template or Path(self.template).suffix.lower()!='.json':self.fail('可视化布局编辑使用 JSON 图片模板；PSD 布局仍需 Photoshop。可先载入内置示例。');return
+        try:
+            from .editor import TemplateLayoutEditor
+            recipe,rows=self.recipe();editor=TemplateLayoutEditor(self.template,rows[0],self)
+            if not editor.exec():return
+            path,_=QFileDialog.getSaveFileName(self,'另存为新模板',str(Path(self.template).with_name(Path(self.template).stem+'_edited.json')),'JSON (*.json)')
+            if not path:return
+            editor.save_to(path);self.load_template(path);self.log.append('新模板已载入，原模板未修改；多模板批次中的旧快照不会自动替换。')
+        except Exception as e:self.fail(str(e))
 
     def image_recipe(self,mode):
         if not self.images:raise ValueError("请先选择图片")
@@ -431,7 +461,7 @@ class Window(QMainWindow):
     def save_preset(self):
         path,_=QFileDialog.getSaveFileName(self,"保存预设","watermark.json","JSON (*.json)")
         if path:
-            try:write_json(path,dict(version=1,overlay=self.overlay.text(),options=self.water_options()))
+            try:write_json(path,dict(version=2,overlay=self.overlay.text(),options=self.water_options()))
             except Exception as e:self.fail(str(e))
 
     def load_preset(self):
@@ -439,9 +469,10 @@ class Window(QMainWindow):
         if not path:return
         try:
             spec=json.loads(Path(path).read_text(encoding="utf-8"))
-            if spec["version"]!=1:raise ValueError("预设版本不兼容")
+            if spec["version"] not in (1,2):raise ValueError("预设版本不兼容")
             opts=spec["options"];self.overlay.setText(spec["overlay"]);self.scale.setValue(opts["scale"]);self.opacity.setValue(opts["opacity"])
             self.position.setCurrentText(opts["position"]);self.tile.setChecked(opts["tile"]);self.gap.setValue(opts["gap"]);self.blend.setCurrentText(opts["blend"])
+            self.water_offset=opts.get('offset');self.scale.setDecimals(6);self.scale.setValue(opts['scale'])
         except Exception as e:self.fail("预设无效："+str(e))
 
     def make_collage(self):
@@ -549,9 +580,16 @@ def main():
         window.load_template(str(second));window.add_collection();window.group.setCurrentIndex(window.group.findData('customer'));window.run_collection()
         def finish_smoke():
             if window.worker and window.worker.isRunning():return
+            timer.stop()
             ok=bool(window.last_batch and all(x[3]=='succeeded' for x in window.last_batch['items']))
             window.grab().save(str(root/'desktop.png'))
-            write_json(root/'result.json',{'ok':ok,'log':window.log.toPlainText()})
+            editor_result={}
+            try:
+                from .editor_smoke import run
+                editor_result=run(root,window.template)
+            except Exception as e:
+                ok=False;editor_result={'error':str(e)}
+            write_json(root/'result.json',{'ok':ok,'log':window.log.toPlainText(),'editors':editor_result})
             timer.stop();app.exit(0 if ok else 1)
         timer=QTimer();timer.timeout.connect(finish_smoke);timer.start(100)
     sys.exit(app.exec())

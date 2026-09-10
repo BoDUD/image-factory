@@ -62,6 +62,11 @@ def dependencies(template):
 def render_template(template, values):
     inspect_template(template)
     spec = json.loads(Path(template).read_text(encoding="utf-8"))
+    return render_spec(spec,values,template)
+
+
+def render_spec(spec,values,template):
+    size_ok(*spec['size'])
     canvas = Image.new("RGBA", tuple(spec["size"]), spec.get("background", "white"))
     if spec.get("background_image"):
         canvas.alpha_composite(ImageOps.fit(load_image(asset(template, spec["background_image"])), canvas.size))
@@ -92,11 +97,24 @@ def render_template(template, values):
     return canvas
 
 
-def watermark(base, overlay, scale=.3, opacity=.65, position="bottom-right", tile=False, gap=30, blend="normal", feather=0):
+def watermark_rect(base_size,overlay_size,scale=.3,position='bottom-right',gap=30,offset=None):
+    bw,bh=base_size;ow,oh=overlay_size
+    if not math.isfinite(scale) or not 0 < scale <= 2:raise ValueError('水印比例无效')
+    width=max(1,int(bw*scale));height=max(1,round(oh*width/ow));size_ok(width,height)
+    if offset is not None:
+        if len(offset)!=2 or any(not math.isfinite(v) or not -2<=v<=2 for v in offset):raise ValueError('水印坐标无效')
+        x,y=round(offset[0]*bw),round(offset[1]*bh)
+    else:
+        points={'center':((bw-width)//2,(bh-height)//2),'top-left':(gap,gap),'bottom-right':(bw-width-gap,bh-height-gap)}
+        if position not in points:raise ValueError('未知水印位置')
+        x,y=points[position]
+    return x,y,width,height
+
+
+def watermark(base, overlay, scale=.3, opacity=.65, position="bottom-right", tile=False, gap=30, blend="normal", feather=0, offset=None):
     if not 0 < scale <= 2 or not 0 <= opacity <= 1 or gap < 0:
         raise ValueError("水印比例、透明度或间距无效")
-    width = max(1, int(base.width * scale)); height = max(1, round(overlay.height * width / overlay.width))
-    size_ok(width, height)
+    x,y,width,height=watermark_rect(base.size,overlay.size,scale,position,gap,offset)
     mark = overlay.resize((width, height), Image.Resampling.LANCZOS)
     alpha = mark.getchannel("A")
     if feather:
@@ -108,8 +126,7 @@ def watermark(base, overlay, scale=.3, opacity=.65, position="bottom-right", til
             for x in range(0, base.width, width + gap):
                 layer.alpha_composite(mark, (x, y))
     else:
-        points = {"center": ((base.width-width)//2, (base.height-height)//2), "top-left": (gap, gap), "bottom-right": (base.width-width-gap, base.height-height-gap)}
-        layer.alpha_composite(mark, points[position])
+        layer.alpha_composite(mark, (x,y))
     if blend != "normal":
         operations = {"multiply": ImageChops.multiply, "screen": ImageChops.screen, "overlay": ImageChops.overlay}
         if blend not in operations:
