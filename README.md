@@ -1,1 +1,100 @@
-# image-factory
+# Image Factory · 本地出图工坊
+
+根据《PSD 批量出图助手设计书 V2》实现的 Windows 桌面程序。
+**当前 v0.1.0 是可运行的基础版，尚未覆盖 V2 全部阶段。**
+
+## 快速体验
+
+Windows 便携包解压后运行 `ImageFactory.exe`，请保留同目录 `_internal` 文件夹。GitHub Actions 构建通过后可以下载 `ImageFactory-Windows` 构建产物。
+
+1. 点击“生成并载入示例”，无需 Photoshop 即可测试。
+2. 3 条中文姓名与编号自动匹配到字段。
+3. 选择成品目录，点击“一键改图”，查看 PNG 成品。
+4. “任务与交付”可刷新批次、恢复任务和导出 ZIP。
+
+使用自己的 PSD：启动 Windows Photoshop → 在“连接与范围”检测连接 → 拖入 PSD 与 Excel/CSV/TXT → 绑定字段 → 试出 → 批量生成。
+**Photoshop 桥接已编写，但本次开发环境没有 Photoshop，尚未进行真实 PSD 兼容验收。** 先用副本和少量记录测试。
+
+## 实现范围
+
+| 功能 | 当前状态 |
+| --- | --- |
+| 拖模板、客户表、一键批量改图 | 可运行；单模板多客户 |
+| XLSX/CSV/TXT、编码和工作表选择 | 已实现；Excel 公式须先转为值 |
+| 字段建议、绑定记忆、试出 | 已实现 |
+| JSON 模板中文文字与图片槽位 | 已实现 |
+| PSD 点文字、当前文档快照、PNG/JPG | 已接入，待 Photoshop 实测 |
+| 水印锚点、比例、透明度、平铺、混合与预设 | 已实现 |
+| 镜像、方形裁切、缩放、模糊和马赛克 | 已实现 |
+| 宫格拼图与二维码 PNG | 已实现；二维码尚无自动回读 |
+| GIF 贴膜、关键帧停留、时长与循环 | 已实现；500 帧和 8000 万累计像素上限 |
+| 本地目录图库、搜索、送工具箱 | 已实现；相册数据库未实现 |
+| 暂停、取消、恢复、输出校验与 ZIP | 已实现 |
+| 多 PSD 同批、可视化槽位、深层智能对象 | 后续阶段 |
+| 视频、人脸、联网字体、隐形标 | 后续阶段 |
+| 邮件/网盘/QQ 发图与群管理 | 未实现；QQ 须先验证接口 |
+
+程序不会在未连接 Photoshop 或渠道时显示虚假的处理、发送成功。
+
+## 源码运行
+
+安装 Python 3.11 或更新版本，双击 `setup.bat`，然后用 `start.bat` 启动。或运行：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
+.\.venv\Scripts\python.exe -m pip install --no-deps --no-build-isolation -e .
+.\.venv\Scripts\python.exe -m image_factory
+```
+
+依赖在 Python 3.14 / Windows 验证；CI 使用 Python 3.12。
+
+## 模板与客户表
+
+PSD 统一样式的点文字层推荐命名 `TEXT__customer`、`TEXT__order_id`。扫描嵌套组但不进入智能对象；段落和混合样式文字报错。调整最大文字宽度，超过时缩小到 12pt，仍超出则失败。复杂字体、文字路径、特效和 PS 版本不作通用兼容承诺。
+
+无需 Photoshop 的 JSON 模板：
+
+```json
+{
+  "version": 1,
+  "size": [900, 900],
+  "background": "#e7f5f1",
+  "text": [{"field": "customer", "box": [80, 300, 740, 150], "size": 88, "min_size": 24, "color": "#17564b", "align": "center"}]
+}
+```
+
+可选 `background_image`、`frame` 相对于模板定位；`text[].font` 指定字体文件，默认优先 Windows 微软雅黑。
+图片槽位：`"slots": [{"field":"avatar","box":[20,20,300,300]}]`。名单单元格填图片路径，相对路径以名单目录为基准。槽位等比填满并居中裁切。首版尚未自动检测全部缺字。
+
+客户 CSV：
+
+```csv
+姓名,编号
+今今,A001
+小星星,A002
+```
+
+TXT 每行一位客户。XLSX 前导零编号须设为文本；数字单元格的显示格式不会恢复为字符串。重复姓名保留独立序号。
+
+## 数据与恢复
+
+- 成品目录 `.factory/jobs.sqlite3` 保存输入快照和哈希；不要删除，否则不能恢复原批次。
+- 同一输出目录进程互斥，哈希相符成品跳过，冲突不覆盖；输入改变后建立新批次。
+- 通过同文件系统硬链接原子提交，推荐本地 NTFS；FAT/exFAT 或部分网盘目录可能不支持，会明确报错。
+- Photoshop 在副本中修改，超时不杀死用户的 Photoshop。检查处理状态后再恢复；原稿保护待实机验证。
+- PSD 转 sRGB；Pillow 路线暂不做完整 ICC 转换，精确色彩素材请先转 sRGB。
+- 素材名单默认不上传，运行无需服务器。
+
+## 测试和打包
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe build_windows.py
+```
+
+产物在 `dist/ImageFactory/`。测试覆盖实图生成、名单异常、透明度、冲突保护、恢复、ZIP、GIF 时间和界面映射。
+`tests/smoke_desktop.py` 通过真实 QThread 执行示例并截图；从仓库根设置 `PYTHONPATH=.` 后运行。
+
+设计书：`docs/Design-V2.docx`；实现差距：`docs/ROADMAP.md`。
+参考：[Photoshop scripting](https://helpx.adobe.com/photoshop/using/scripting.html)、[Qt drag and drop](https://doc.qt.io/qtforpython-6/overviews/qtgui-dnd.html)。

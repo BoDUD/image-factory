@@ -1,0 +1,33 @@
+name: Test and build Windows application
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-lock.txt
+      - run: python -m pip install -r requirements-lock.txt
+      - run: python -m pip install --no-deps --no-build-isolation -e .
+      - run: python -m pytest -q
+        env:
+          QT_QPA_PLATFORM: offscreen
+      - run: python build_windows.py
+      - shell: pwsh
+        run: |
+          $appProcess = Start-Process -FilePath dist/ImageFactory/ImageFactory.exe -ArgumentList '--smoke-dir', 'build/packaged-smoke' -WindowStyle Hidden -PassThru
+          if (!$appProcess.WaitForExit(60000)) { Stop-Process -Id $appProcess.Id; throw 'Packaged smoke timeout' }
+          if ($appProcess.ExitCode -ne 0) { throw 'Packaged smoke failed' }
+          if (!(Get-Content build/packaged-smoke/result.json | ConvertFrom-Json).ok) { throw 'No successful batch' }
+        env:
+          QT_QPA_PLATFORM: offscreen
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ImageFactory-Windows
+          path: dist/ImageFactory
